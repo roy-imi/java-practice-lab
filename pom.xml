@@ -19,5 +19,7 @@
     <modules>
         <module>future-lab</module>
         <module>lambda-lab</module>
+        <module>stream-lab</module>
+        <module>juc-lab</module>
     </modules>
 </project>

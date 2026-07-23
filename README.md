@@ -4,8 +4,10 @@
 
 ```text
 java-practice-lab/
+├── lambda-lab/   Lambda、函数式接口、方法引用（含基础 Stream 应用）
+├── stream-lab/   Stream 流水线、扁平化、终止操作与 Collectors
 ├── future-lab/   Future 与 CompletableFuture
-└── lambda-lab/   Lambda、函数式接口、方法引用与 Stream
+└── juc-lab/      JUC、高并发工具、线程池与秒杀综合实战
 ```
 
 每个模块都采用相同的学习结构：
@@ -28,6 +30,14 @@ mvn package
 java -cp target/classes com.roy.lambdalab.LambdaLearningConsole 1
 ```
 
+进入 Stream 模块：
+
+```bash
+cd /Users/roy/Documents/代码学习/java-practice-lab/stream-lab
+mvn package
+java -cp target/classes com.roy.streamlab.StreamLearningConsole 1
+```
+
 进入 Future 模块：
 
 ```bash
@@ -36,11 +46,21 @@ mvn package
 java -cp target/classes com.roy.futurelab.LearningConsole 1
 ```
 
+进入 JUC 模块：
+
+```bash
+cd /Users/roy/Documents/代码学习/java-practice-lab/juc-lab
+mvn package
+java -cp target/classes com.roy.juclab.JucLearningConsole 1
+```
+
 也可以在项目根目录只构建一个模块：
 
 ```bash
 mvn -pl lambda-lab package
+mvn -pl stream-lab package
 mvn -pl future-lab package
+mvn -pl juc-lab package
 ```
 
-建议先学习 Lambda，再继续 CompletableFuture。后者大量使用 Supplier、Function、Consumer 和 BiFunction；理解 Lambda 后，异步流水线会直观很多。
+建议学习顺序：Lambda → Stream → Future/CompletableFuture → JUC。先掌握表达规则和流水线，再理解异步结果，最后系统学习共享状态、线程协调、资源治理和高并发设计。

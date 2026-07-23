@@ -42,6 +42,10 @@ java -cp target/classes com.roy.futurelab.ExerciseCheck 1
 java -cp target/classes com.roy.futurelab.SelfCheck
 ```
 
+完成 Future 与 CompletableFuture 后，可以进入
+[juc-lab](../juc-lab/README.md)，继续学习原子类、锁、并发容器、
+同步器、阻塞队列和生产级线程池。
+
 查看某课标准答案的演示效果（不会调用练习代码）：
 
 ```bash

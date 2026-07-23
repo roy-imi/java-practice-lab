@@ -35,4 +35,7 @@ java -cp target/classes com.roy.lambdalab.LambdaSelfCheck
 | 3 | 方法引用 | 静态、对象实例、类型实例、构造器引用 |
 | 4 | Stream 实战 | `filter`、`sorted`、`map`、`collect` |
 
+第 4 课只是用 Stream 综合练习 Lambda。完成后可进入
+[stream-lab](../stream-lab/README.md)，系统学习流式编程。
+
 先看 [学习地图](docs/LEARNING_MAP.md)。卡住时按编号查看 `docs/hints`，最后才打开 `answers`。
