@@ -10,8 +10,9 @@ java-practice-lab/
 
 每个模块都采用相同的学习结构：
 
-- `exercises`：练习代码，只给背景知识、API 说明、TODO 和提示。
+- `exercises`：练习代码，只保留课程简介、练习重点和 TODO。
 - `answers`：独立参考答案，完成练习后再打开。
+- `docs/guides`：集中存放背景知识、API 参数解析和代码例子。
 - `docs/hints`：逐级提示。
 - `LearningConsole`：观察练习运行效果。
 - `ExerciseCheck`：只验收练习代码，不调用答案。

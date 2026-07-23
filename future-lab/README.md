@@ -5,6 +5,7 @@
 项目不会在题目代码里直接给答案：
 
 - `src/main/java/.../exercises`：你要修改的练习区，初始代码可以编译，但运行会提示尚未完成。
+- `docs/guides`：课前教程、API 参数解析和代码例子。
 - `docs/hints`：每题三档提示。先只看提示 1，仍然卡住再继续。
 - `src/main/java/.../answers`：独立答案区。完成后再对照，也可由自检程序验证。
 - `LearningConsole`：运行某一课的练习。
@@ -58,7 +59,8 @@ java -cp target/classes com.roy.futurelab.AnswerConsole 1
 | 5 | 批量聚合与失败降级 | `allOf`、`whenComplete`、`exceptionally` |
 | 6 | 谁先完成用谁、无返回值任务 | `anyOf`、`runAsync` |
 
-先读 [学习地图](docs/LEARNING_MAP.md)，每完成一课再写下：
+先读 [学习地图](docs/LEARNING_MAP.md) 和
+[Future 教程索引](docs/guides/README.md)，每完成一课再写下：
 
 1. 哪些任务可以并行？
 2. 当前线程在哪一步被阻塞？

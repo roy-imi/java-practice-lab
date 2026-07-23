@@ -2,6 +2,9 @@
 
 这个模块用商品筛选和展示场景练习 Java 8 Lambda。题目代码只包含背景知识、API 参数说明和 TODO；参考答案独立放在 `answers` 包。
 
+学习前建议先查看 [教程索引](docs/guides/README.md)。API 参数说明和代码例子
+已经集中到该目录，练习类只保留题目、重点和 TODO。
+
 ## 开始
 
 ```bash
