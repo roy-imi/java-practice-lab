@@ -2,7 +2,9 @@ package com.roy.lambdalab.exercises;
 
 import com.roy.lambdalab.model.Product;
 
+import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /*
  * 第 4 课：在 Stream 中使用 Lambda。
@@ -24,6 +26,10 @@ public final class LambdaLab04Streams {
          * - map：只保留商品名称；
          * - collect：收集成 List 并返回。
          */
-        throw new UnsupportedOperationException("TODO: 完成 Lambda 第 4 课");
+        return products.stream()
+                .filter(product -> product.getStock() > 0 && product.getStock() <= maxPriceCents)
+                .sorted(Comparator.comparingInt(Product::getPriceCents))
+                .map(Product::getName)
+                .collect(Collectors.toList());
     }
 }
