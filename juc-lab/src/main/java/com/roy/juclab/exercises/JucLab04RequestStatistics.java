@@ -13,22 +13,25 @@ import java.util.concurrent.atomic.LongAdder;
  * 练习重点：ConcurrentHashMap、computeIfAbsent 和 LongAdder。
  */
 public final class JucLab04RequestStatistics {
-    private final ConcurrentMap<String, LongAdder> counts =
-            new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, LongAdder> counts = new ConcurrentHashMap<>();
 
     public void record(String endpoint) {
         /*
          * TODO：原子地取得或创建 LongAdder，然后递增。
          * 不要使用 containsKey 后再 put 的“先检查再执行”组合。
          */
-        throw new UnsupportedOperationException("TODO: 完成 JUC Lab 04 的并发统计");
+        counts.computeIfAbsent(
+                    endpoint,
+                    key -> new LongAdder()
+                ).increment();
     }
 
     public long count(String endpoint) {
         /*
          * TODO：不存在时返回 0，否则返回 LongAdder 的当前值。
          */
-        throw new UnsupportedOperationException("TODO: 完成 JUC Lab 04 的统计读取");
+        LongAdder longAdder = counts.get(endpoint);
+        return longAdder == null ? 0L : longAdder.sum();
     }
 
     public Map<String, Long> snapshot() {
@@ -36,6 +39,10 @@ public final class JucLab04RequestStatistics {
          * TODO：把当前统计复制到新的普通 Map 中。
          * 这是弱一致快照，不要求阻塞所有正在写入的线程。
          */
-        throw new UnsupportedOperationException("TODO: 完成 JUC Lab 04 的统计快照");
+        Map<String, Long> result = new HashMap<>();
+        counts.forEach(
+                (endpoint, counter) -> result.put(endpoint, counter.sum())
+        );
+        return result;
     }
 }
