@@ -8,13 +8,22 @@ import com.roy.juclab.exercises.JucLab05ConcurrencyGate;
 import com.roy.juclab.exercises.JucLab06BlockingQueuePipeline;
 import com.roy.juclab.exercises.JucLab07ThreadPoolFactory;
 import com.roy.juclab.exercises.JucLab08FlashSaleService;
+import com.roy.juclab.exercises.JucLab09ThreadLocalContext;
+import com.roy.juclab.exercises.JucLab10LockInventory;
+import com.roy.juclab.exercises.JucLab10SynchronizedInventory;
+import com.roy.juclab.exercises.JucLab11VolatileServiceState;
 import com.roy.juclab.model.PurchaseResult;
+import com.roy.juclab.model.RequestContext;
+import com.roy.juclab.model.ServiceConfig;
 
+import java.lang.reflect.Modifier;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalInt;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -30,7 +39,7 @@ public final class JucExerciseCheck {
 
     public static void main(String[] args) {
         if (args.length != 1) {
-            throw new IllegalArgumentException("用法：JucExerciseCheck <1-8>");
+            throw new IllegalArgumentException("用法：JucExerciseCheck <1-11>");
         }
 
         int lesson = Integer.parseInt(args[0]);
@@ -75,8 +84,17 @@ public final class JucExerciseCheck {
             case 8:
                 checkLab08();
                 return;
+            case 9:
+                checkLab09();
+                return;
+            case 10:
+                checkLab10();
+                return;
+            case 11:
+                checkLab11();
+                return;
             default:
-                throw new IllegalArgumentException("课次只能是 1 到 8");
+                throw new IllegalArgumentException("课次只能是 1 到 11");
         }
     }
 
@@ -327,6 +345,350 @@ public final class JucExerciseCheck {
                 stockBeforeRetry,
                 service.getRemainingStock(),
                 "重复请求不应再次扣减库存");
+    }
+
+    private static void checkLab09() throws Exception {
+        RequestContext caller =
+                new RequestContext("request-1001", "user-42");
+        JucLab09ThreadLocalContext.clear();
+        assertTrue(
+                !JucLab09ThreadLocalContext.current().isPresent(),
+                "clear 后当前线程应该没有上下文");
+
+        JucLab09ThreadLocalContext.set(caller);
+        assertEquals(
+                caller,
+                JucLab09ThreadLocalContext.current().orElse(null),
+                "set 后无法在当前线程读取上下文");
+
+        ExecutorService executor =
+                Executors.newSingleThreadExecutor();
+        try {
+            RequestContext unpropagated = executor.submit(
+                    () -> JucLab09ThreadLocalContext
+                            .current()
+                            .orElse(null))
+                    .get(2, TimeUnit.SECONDS);
+            assertEquals(
+                    null,
+                    unpropagated,
+                    "普通 ThreadLocal 不应自动出现在另一个线程");
+
+            AtomicReference<RequestContext> observed =
+                    new AtomicReference<>();
+            Runnable contextAware =
+                    JucLab09ThreadLocalContext.wrap(
+                            () -> observed.set(
+                                    JucLab09ThreadLocalContext
+                                            .current()
+                                            .orElse(null)));
+            JucLab09ThreadLocalContext.clear();
+
+            executor.submit(contextAware)
+                    .get(2, TimeUnit.SECONDS);
+            assertEquals(
+                    caller,
+                    observed.get(),
+                    "包装任务没有读取到提交线程捕获的上下文");
+
+            RequestContext leaked = executor.submit(
+                    () -> JucLab09ThreadLocalContext
+                            .current()
+                            .orElse(null))
+                    .get(2, TimeUnit.SECONDS);
+            assertEquals(
+                    null,
+                    leaked,
+                    "任务结束后上下文残留在线程池工作线程");
+        } finally {
+            executor.shutdownNow();
+            JucLab09ThreadLocalContext.clear();
+        }
+
+        RequestContext captured =
+                new RequestContext("request-inner", "user-inner");
+        RequestContext previous =
+                new RequestContext("request-outer", "user-outer");
+        AtomicReference<RequestContext> inside =
+                new AtomicReference<>();
+
+        JucLab09ThreadLocalContext.set(captured);
+        Runnable failing = JucLab09ThreadLocalContext.wrap(() -> {
+            inside.set(
+                    JucLab09ThreadLocalContext
+                            .current()
+                            .orElse(null));
+            throw new IllegalStateException("模拟业务异常");
+        });
+        JucLab09ThreadLocalContext.set(previous);
+
+        boolean failed = false;
+        try {
+            failing.run();
+        } catch (IllegalStateException expected) {
+            failed = true;
+        }
+
+        assertTrue(failed, "包装器不应吞掉业务异常");
+        assertEquals(
+                captured,
+                inside.get(),
+                "任务执行期间没有安装捕获的上下文");
+        assertEquals(
+                previous,
+                JucLab09ThreadLocalContext.current().orElse(null),
+                "任务异常结束后没有恢复原上下文");
+        JucLab09ThreadLocalContext.clear();
+    }
+
+    private static void checkLab10() throws Exception {
+        checkSynchronizedInventory();
+        checkLockInventory();
+    }
+
+    private static void checkSynchronizedInventory() throws Exception {
+        JucLab10SynchronizedInventory waitingInventory =
+                new JucLab10SynchronizedInventory(0);
+        AtomicBoolean purchased = new AtomicBoolean();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        CountDownLatch started = new CountDownLatch(1);
+
+        Thread buyer = new Thread(() -> {
+            started.countDown();
+            try {
+                purchased.set(
+                        waitingInventory.awaitAndPurchase(
+                                2, 2, TimeUnit.SECONDS));
+            } catch (Throwable error) {
+                failure.set(error);
+            }
+        }, "synchronized-buyer");
+        buyer.start();
+        started.await();
+        waitingInventory.restock(2);
+        buyer.join(2_500);
+
+        assertTrue(!buyer.isAlive(), "synchronized 等待线程没有结束");
+        rethrow(failure.get());
+        assertTrue(purchased.get(), "补货后 synchronized 购买应该成功");
+        assertEquals(
+                0,
+                waitingInventory.getRemainingStock(),
+                "synchronized 扣减后的库存错误");
+        long synchronizedStart = System.nanoTime();
+        boolean synchronizedTimedOut =
+                !waitingInventory.awaitAndPurchase(
+                        1, 80, TimeUnit.MILLISECONDS);
+        long synchronizedElapsed =
+                TimeUnit.NANOSECONDS.toMillis(
+                        System.nanoTime() - synchronizedStart);
+        assertTrue(
+                synchronizedTimedOut,
+                "synchronized 库存不足时应该超时返回 false");
+        assertTrue(
+                synchronizedElapsed >= 40,
+                "synchronized 没有按超时预算等待");
+
+        JucLab10SynchronizedInventory concurrentInventory =
+                new JucLab10SynchronizedInventory(30);
+        AtomicInteger successes = new AtomicInteger();
+        runConcurrently(80, index -> {
+            if (purchaseImmediately(concurrentInventory)) {
+                successes.incrementAndGet();
+            }
+        });
+        assertEquals(30, successes.get(), "synchronized 并发购买数量错误");
+        assertEquals(
+                0,
+                concurrentInventory.getRemainingStock(),
+                "synchronized 发生超卖");
+    }
+
+    private static void checkLockInventory() throws Exception {
+        JucLab10LockInventory waitingInventory =
+                new JucLab10LockInventory(0, true);
+        AtomicBoolean purchased = new AtomicBoolean();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        CountDownLatch started = new CountDownLatch(1);
+
+        Thread buyer = new Thread(() -> {
+            started.countDown();
+            try {
+                purchased.set(
+                        waitingInventory.awaitAndPurchase(
+                                2, 2, TimeUnit.SECONDS));
+            } catch (Throwable error) {
+                failure.set(error);
+            }
+        }, "lock-buyer");
+        buyer.start();
+        started.await();
+        waitingInventory.restock(2);
+        buyer.join(2_500);
+
+        assertTrue(!buyer.isAlive(), "Condition 等待线程没有结束");
+        rethrow(failure.get());
+        assertTrue(purchased.get(), "signalAll 后 Lock 购买应该成功");
+        assertEquals(
+                0,
+                waitingInventory.getRemainingStock(),
+                "ReentrantLock 扣减后的库存错误");
+        long lockStart = System.nanoTime();
+        boolean lockTimedOut =
+                !waitingInventory.awaitAndPurchase(
+                        1, 80, TimeUnit.MILLISECONDS);
+        long lockElapsed =
+                TimeUnit.NANOSECONDS.toMillis(
+                        System.nanoTime() - lockStart);
+        assertTrue(
+                lockTimedOut,
+                "Condition 库存不足时应该超时返回 false");
+        assertTrue(
+                lockElapsed >= 40,
+                "Condition 没有按超时预算等待");
+
+        JucLab10LockInventory interruptibleInventory =
+                new JucLab10LockInventory(0, false);
+        AtomicBoolean interrupted = new AtomicBoolean();
+        Thread interruptibleBuyer = new Thread(() -> {
+            try {
+                interruptibleInventory.awaitAndPurchase(
+                        1, 5, TimeUnit.SECONDS);
+            } catch (InterruptedException expected) {
+                interrupted.set(true);
+            }
+        }, "interruptible-lock-buyer");
+        interruptibleBuyer.start();
+        awaitState(
+                interruptibleBuyer,
+                Thread.State.TIMED_WAITING,
+                1,
+                TimeUnit.SECONDS);
+        interruptibleBuyer.interrupt();
+        interruptibleBuyer.join(1_000);
+        assertTrue(
+                interrupted.get(),
+                "Condition 等待没有响应 interrupt");
+        assertTrue(
+                !interruptibleBuyer.isAlive(),
+                "中断后 Condition 等待线程没有结束");
+
+        JucLab10LockInventory concurrentInventory =
+                new JucLab10LockInventory(30, false);
+        AtomicInteger successes = new AtomicInteger();
+        runConcurrently(80, index -> {
+            if (purchaseImmediately(concurrentInventory)) {
+                successes.incrementAndGet();
+            }
+        });
+        assertEquals(30, successes.get(), "ReentrantLock 并发购买数量错误");
+        assertEquals(
+                0,
+                concurrentInventory.getRemainingStock(),
+                "ReentrantLock 发生超卖");
+    }
+
+    private static void checkLab11() throws Exception {
+        ServiceConfig initial =
+                new ServiceConfig(
+                        1,
+                        "https://api-v1.example",
+                        1_000);
+        JucLab11VolatileServiceState state =
+                new JucLab11VolatileServiceState(initial);
+
+        assertEquals(
+                initial,
+                state.currentConfig(),
+                "初始配置读取错误");
+        assertTrue(
+                Modifier.isVolatile(
+                        JucLab11VolatileServiceState.class
+                                .getDeclaredField("running")
+                                .getModifiers()),
+                "running 字段必须使用 volatile");
+        assertTrue(
+                Modifier.isVolatile(
+                        JucLab11VolatileServiceState.class
+                                .getDeclaredField("config")
+                                .getModifiers()),
+                "config 字段必须使用 volatile");
+
+        ServiceConfig updated =
+                new ServiceConfig(
+                        2,
+                        "https://api-v2.example",
+                        800);
+        state.updateConfig(updated);
+        assertEquals(updated, state.currentConfig(), "配置快照更新错误");
+
+        CountDownLatch workerStarted = new CountDownLatch(1);
+        Thread worker = new Thread(() -> {
+            workerStarted.countDown();
+            while (state.isRunning()) {
+                Thread.yield();
+            }
+        }, "volatile-stop-check");
+        worker.start();
+        workerStarted.await();
+        state.requestStop();
+        worker.join(1_000);
+        if (worker.isAlive()) {
+            worker.interrupt();
+        }
+        assertTrue(!worker.isAlive(), "工作线程没有观察到 volatile 停止信号");
+
+        JucLab11VolatileServiceState counterState =
+                new JucLab11VolatileServiceState(initial);
+        runConcurrently(16, index -> {
+            for (int count = 0; count < 1_000; count++) {
+                counterState.recordProcessedRequest();
+            }
+        });
+        assertEquals(
+                16_000,
+                counterState.getProcessedRequests(),
+                "请求计数丢失；volatile 不能替代 AtomicInteger");
+    }
+
+    private static boolean purchaseImmediately(
+            JucLab10SynchronizedInventory inventory) {
+        try {
+            return inventory.awaitAndPurchase(
+                    1, 0, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("并发购买被意外中断", interrupted);
+        }
+    }
+
+    private static boolean purchaseImmediately(
+            JucLab10LockInventory inventory) {
+        try {
+            return inventory.awaitAndPurchase(
+                    1, 0, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("并发购买被意外中断", interrupted);
+        }
+    }
+
+    private static void awaitState(Thread thread,
+                                   Thread.State expected,
+                                   long timeout,
+                                   TimeUnit unit) {
+        long deadline =
+                System.nanoTime()
+                        + unit.toNanos(timeout);
+        while (thread.getState() != expected
+                && thread.isAlive()
+                && System.nanoTime() < deadline) {
+            Thread.yield();
+        }
+        assertEquals(
+                expected,
+                thread.getState(),
+                "线程没有进入预期状态");
     }
 
     private static void runConcurrently(int threadCount,

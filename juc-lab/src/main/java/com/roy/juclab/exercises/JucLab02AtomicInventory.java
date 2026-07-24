@@ -28,20 +28,34 @@ public final class JucLab02AtomicInventory {
          * - 使用 compareAndSet 扣减，失败时重新读取并重试；
          * - 成功后将 successfulOrders 加一。
          */
-        throw new UnsupportedOperationException("TODO: 完成 JUC Lab 02 的 CAS 扣减");
+        if (quantity <= 0) {
+            throw new IllegalArgumentException("quantity 必须大于0");
+        }
+
+        while (true) {
+            int curStock = remainingStock.get();
+            if (curStock < quantity) {
+                return false;
+            }
+            boolean flag = remainingStock.compareAndSet(curStock, curStock - quantity);
+            if (flag) {
+                successfulOrders.increment();
+                return true;
+            }
+        }
     }
 
     public int getRemainingStock() {
         /*
          * TODO：原子读取剩余库存。
          */
-        throw new UnsupportedOperationException("TODO: 完成 JUC Lab 02 的库存读取");
+        return remainingStock.get();
     }
 
     public long getSuccessfulOrders() {
         /*
          * TODO：读取成功订单次数。注意这不是售出的商品件数。
          */
-        throw new UnsupportedOperationException("TODO: 完成 JUC Lab 02 的计数读取");
+        return successfulOrders.sum();
     }
 }

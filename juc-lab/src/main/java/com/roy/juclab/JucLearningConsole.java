@@ -8,6 +8,12 @@ import com.roy.juclab.exercises.JucLab05ConcurrencyGate;
 import com.roy.juclab.exercises.JucLab06BlockingQueuePipeline;
 import com.roy.juclab.exercises.JucLab07ThreadPoolFactory;
 import com.roy.juclab.exercises.JucLab08FlashSaleService;
+import com.roy.juclab.exercises.JucLab09ThreadLocalContext;
+import com.roy.juclab.exercises.JucLab10LockInventory;
+import com.roy.juclab.exercises.JucLab10SynchronizedInventory;
+import com.roy.juclab.exercises.JucLab11VolatileServiceState;
+import com.roy.juclab.model.RequestContext;
+import com.roy.juclab.model.ServiceConfig;
 
 import java.util.Arrays;
 import java.util.concurrent.CountDownLatch;
@@ -27,7 +33,11 @@ public final class JucLearningConsole {
             runLesson(lesson);
         } catch (UnsupportedOperationException todo) {
             System.out.println(todo.getMessage());
-            System.out.println("需要时查看 docs/hints/lab-0" + lesson + ".md");
+            System.out.println(
+                    "需要时查看 "
+                            + String.format(
+                                    "docs/hints/lab-%02d.md",
+                                    lesson));
         }
     }
 
@@ -111,8 +121,73 @@ public final class JucLearningConsole {
                 System.out.println(
                         "剩余库存：" + service.getRemainingStock());
                 return;
+            case 9:
+                RequestContext requestContext =
+                        new RequestContext("request-1001", "user-42");
+                JucLab09ThreadLocalContext.set(requestContext);
+                Runnable contextAware =
+                        JucLab09ThreadLocalContext.wrap(
+                                () -> System.out.println(
+                                        "任务中的上下文："
+                                                + JucLab09ThreadLocalContext
+                                                .current()
+                                                .orElse(null)));
+                JucLab09ThreadLocalContext.clear();
+
+                contextAware.run();
+                System.out.println(
+                        "任务结束后的上下文："
+                                + JucLab09ThreadLocalContext.current());
+                return;
+            case 10:
+                JucLab10SynchronizedInventory synchronizedInventory =
+                        new JucLab10SynchronizedInventory(2);
+                System.out.println(
+                        "synchronized 购买："
+                                + synchronizedInventory.awaitAndPurchase(
+                                        1, 0, TimeUnit.MILLISECONDS));
+                System.out.println(
+                        "synchronized 剩余："
+                                + synchronizedInventory
+                                .getRemainingStock());
+
+                JucLab10LockInventory lockInventory =
+                        new JucLab10LockInventory(2, false);
+                System.out.println(
+                        "ReentrantLock 购买："
+                                + lockInventory.awaitAndPurchase(
+                                        1, 0, TimeUnit.MILLISECONDS));
+                System.out.println(
+                        "ReentrantLock 剩余："
+                                + lockInventory.getRemainingStock());
+                return;
+            case 11:
+                ServiceConfig initialConfig =
+                        new ServiceConfig(
+                                1,
+                                "https://api-v1.example",
+                                1_000);
+                JucLab11VolatileServiceState serviceState =
+                        new JucLab11VolatileServiceState(initialConfig);
+                System.out.println(
+                        "初始配置：" + serviceState.currentConfig());
+                serviceState.updateConfig(
+                        new ServiceConfig(
+                                2,
+                                "https://api-v2.example",
+                                800));
+                System.out.println(
+                        "更新配置：" + serviceState.currentConfig());
+                serviceState.recordProcessedRequest();
+                System.out.println(
+                        "已处理请求："
+                                + serviceState.getProcessedRequests());
+                serviceState.requestStop();
+                System.out.println(
+                        "仍在运行：" + serviceState.isRunning());
+                return;
             default:
-                throw new IllegalArgumentException("课次只能是 1 到 8");
+                throw new IllegalArgumentException("课次只能是 1 到 11");
         }
     }
 }

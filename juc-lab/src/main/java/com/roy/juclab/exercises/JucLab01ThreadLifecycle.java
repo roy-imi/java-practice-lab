@@ -15,20 +15,22 @@ public final class JucLab01ThreadLifecycle {
          * TODO：创建指定名称的 Thread，调用 start 后返回该线程。
          * 不要直接调用 task.run() 或 thread.run()。
          */
-        throw new UnsupportedOperationException("TODO: 完成 JUC Lab 01 的线程启动");
+        Thread thread = new Thread(task, threadName);
+        thread.start();
+        return thread;
     }
 
     public static void waitFor(Thread thread) throws InterruptedException {
         /*
          * TODO：等待目标线程执行结束。
          */
-        throw new UnsupportedOperationException("TODO: 完成 JUC Lab 01 的线程等待");
+        thread.join();
     }
 
     public static void requestStop(Thread thread) {
         /*
          * TODO：发送中断请求。不要使用已经废弃且不安全的 Thread.stop()。
          */
-        throw new UnsupportedOperationException("TODO: 完成 JUC Lab 01 的中断请求");
+        thread.interrupt();
     }
 }

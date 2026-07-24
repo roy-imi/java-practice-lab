@@ -8,14 +8,23 @@ import com.roy.juclab.answers.JucLab05ConcurrencyGateAnswer;
 import com.roy.juclab.answers.JucLab06BlockingQueuePipelineAnswer;
 import com.roy.juclab.answers.JucLab07ThreadPoolFactoryAnswer;
 import com.roy.juclab.answers.JucLab08FlashSaleServiceAnswer;
+import com.roy.juclab.answers.JucLab09ThreadLocalContextAnswer;
+import com.roy.juclab.answers.JucLab10LockInventoryAnswer;
+import com.roy.juclab.answers.JucLab10SynchronizedInventoryAnswer;
+import com.roy.juclab.answers.JucLab11VolatileServiceStateAnswer;
 import com.roy.juclab.model.PurchaseResult;
+import com.roy.juclab.model.RequestContext;
+import com.roy.juclab.model.ServiceConfig;
 
 import java.util.Arrays;
 import java.util.OptionalInt;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.IntConsumer;
@@ -33,8 +42,11 @@ public final class JucSelfCheck {
         checkLab06();
         checkLab07();
         checkLab08();
+        checkLab09();
+        checkLab10();
+        checkLab11();
         System.out.println();
-        System.out.println("全部通过：JUC 8/8。");
+        System.out.println("全部通过：JUC 11/11。");
     }
 
     private static void checkLab01() throws InterruptedException {
@@ -157,6 +169,144 @@ public final class JucSelfCheck {
         PurchaseResult retry = service.purchase("answer-request-0");
         assertTrue(first == retry);
         pass(8, "秒杀防超卖与幂等");
+    }
+
+    private static void checkLab09() throws Exception {
+        RequestContext context =
+                new RequestContext("answer-request", "answer-user");
+        JucLab09ThreadLocalContextAnswer.set(context);
+        AtomicReference<RequestContext> observed =
+                new AtomicReference<>();
+        Runnable wrapped =
+                JucLab09ThreadLocalContextAnswer.wrap(
+                        () -> observed.set(
+                                JucLab09ThreadLocalContextAnswer
+                                        .current()
+                                        .orElse(null)));
+        JucLab09ThreadLocalContextAnswer.clear();
+
+        ExecutorService executor =
+                Executors.newSingleThreadExecutor();
+        try {
+            executor.submit(wrapped)
+                    .get(2, TimeUnit.SECONDS);
+            assertEquals(context, observed.get());
+            assertEquals(
+                    null,
+                    executor.submit(
+                            () -> JucLab09ThreadLocalContextAnswer
+                                    .current()
+                                    .orElse(null))
+                            .get(2, TimeUnit.SECONDS));
+        } finally {
+            executor.shutdownNow();
+            JucLab09ThreadLocalContextAnswer.clear();
+        }
+        pass(9, "ThreadLocal 请求上下文");
+    }
+
+    private static void checkLab10() throws Exception {
+        JucLab10SynchronizedInventoryAnswer synchronizedInventory =
+                new JucLab10SynchronizedInventoryAnswer(0);
+        AtomicBoolean synchronizedPurchased = new AtomicBoolean();
+        AtomicReference<Throwable> synchronizedFailure =
+                new AtomicReference<>();
+        Thread synchronizedBuyer = new Thread(() -> {
+            try {
+                synchronizedPurchased.set(
+                        synchronizedInventory.awaitAndPurchase(
+                                1, 1, TimeUnit.SECONDS));
+            } catch (Throwable error) {
+                synchronizedFailure.set(error);
+            }
+        });
+        synchronizedBuyer.start();
+        awaitTimedWaiting(synchronizedBuyer);
+        synchronizedInventory.restock(1);
+        synchronizedBuyer.join(1_500);
+        assertTrue(!synchronizedBuyer.isAlive());
+        assertEquals(null, synchronizedFailure.get());
+        assertTrue(synchronizedPurchased.get());
+        assertEquals(0, synchronizedInventory.getRemainingStock());
+
+        JucLab10LockInventoryAnswer lockInventory =
+                new JucLab10LockInventoryAnswer(0, false);
+        AtomicBoolean lockPurchased = new AtomicBoolean();
+        AtomicReference<Throwable> lockFailure =
+                new AtomicReference<>();
+        Thread lockBuyer = new Thread(() -> {
+            try {
+                lockPurchased.set(
+                        lockInventory.awaitAndPurchase(
+                                1, 1, TimeUnit.SECONDS));
+            } catch (Throwable error) {
+                lockFailure.set(error);
+            }
+        });
+        lockBuyer.start();
+        awaitTimedWaiting(lockBuyer);
+        lockInventory.restock(1);
+        lockBuyer.join(1_500);
+        assertTrue(!lockBuyer.isAlive());
+        assertEquals(null, lockFailure.get());
+        assertTrue(lockPurchased.get());
+        assertEquals(0, lockInventory.getRemainingStock());
+        pass(10, "synchronized、ReentrantLock 与 Condition");
+    }
+
+    private static void checkLab11() throws Exception {
+        ServiceConfig initial =
+                new ServiceConfig(
+                        1,
+                        "https://api-v1.example",
+                        1_000);
+        JucLab11VolatileServiceStateAnswer state =
+                new JucLab11VolatileServiceStateAnswer(initial);
+        assertEquals(initial, state.currentConfig());
+
+        ServiceConfig updated =
+                new ServiceConfig(
+                        2,
+                        "https://api-v2.example",
+                        800);
+        state.updateConfig(updated);
+        assertEquals(updated, state.currentConfig());
+
+        CountDownLatch started = new CountDownLatch(1);
+        Thread worker = new Thread(() -> {
+            started.countDown();
+            while (state.isRunning()) {
+                Thread.yield();
+            }
+        });
+        worker.start();
+        started.await();
+        state.requestStop();
+        worker.join(1_000);
+        assertTrue(!worker.isAlive());
+
+        runConcurrently(12, index -> {
+            for (int count = 0; count < 500; count++) {
+                state.recordProcessedRequest();
+            }
+        });
+        assertEquals(6_000, state.getProcessedRequests());
+        assertTrue(!state.isRunning());
+        pass(11, "volatile 可见性与安全发布");
+    }
+
+    private static void awaitTimedWaiting(Thread thread) {
+        long deadline =
+                System.nanoTime()
+                        + TimeUnit.SECONDS.toNanos(1);
+        while (thread.getState() != Thread.State.TIMED_WAITING
+                && thread.isAlive()
+                && System.nanoTime() < deadline) {
+            Thread.yield();
+        }
+        assertEquals(
+                Thread.State.TIMED_WAITING,
+                thread.getState());
     }
 
     private static void runConcurrently(int threadCount,
